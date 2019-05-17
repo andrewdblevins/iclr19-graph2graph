@@ -1,14 +1,14 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from mol_tree import Vocab, MolTree
-from nnutils import create_var, flatten_tensor, avg_pool
-from jtnn_enc import JTNNEncoder
-from jtnn_dec import JTNNDecoder
-from mpn import MPN
-from jtmpn import JTMPN
+from .mol_tree import Vocab, MolTree
+from .nnutils import create_var, flatten_tensor, avg_pool
+from .jtnn_enc import JTNNEncoder
+from .jtnn_dec import JTNNDecoder
+from .mpn import MPN
+from .jtmpn import JTMPN
 
-from chemutils import enum_assemble, set_atommap, copy_edit_mol, attach_mols
+from .chemutils import enum_assemble, set_atommap, copy_edit_mol, attach_mols
 import rdkit
 import rdkit.Chem as Chem
 import copy, math
@@ -41,7 +41,7 @@ class DiffVAE(nn.Module):
         self.G_var = nn.Linear(hidden_size, rand_size / 2)
         self.B_t = nn.Sequential(nn.Linear(hidden_size + rand_size / 2, hidden_size), nn.ReLU())
         self.B_g = nn.Sequential(nn.Linear(hidden_size + rand_size / 2, hidden_size), nn.ReLU())
-            
+
     def encode(self, jtenc_holder, mpn_holder):
         tree_vecs, tree_mess = self.jtnn(*jtenc_holder)
         mol_vecs = self.mpn(*mpn_holder)
@@ -53,8 +53,8 @@ class DiffVAE(nn.Module):
         mol_eps = create_var( torch.randn(mol_vecs.size(0), 1, self.rand_size / 2) )
         mol_eps = mol_eps.expand(-1, mol_vecs.size(1), -1)
 
-        tree_vecs = torch.cat([tree_vecs,tree_eps], dim=-1) 
-        mol_vecs = torch.cat([mol_vecs,mol_eps], dim=-1) 
+        tree_vecs = torch.cat([tree_vecs,tree_eps], dim=-1)
+        mol_vecs = torch.cat([mol_vecs,mol_eps], dim=-1)
         return self.B_t(tree_vecs), self.B_g(mol_vecs)
 
     def fuse_pair(self, x_tree_vecs, x_mol_vecs, y_tree_vecs, y_mol_vecs, jtenc_scope, mpn_scope):
@@ -112,7 +112,7 @@ class DiffVAE(nn.Module):
                 x_mol_vecs.unsqueeze(1),
                 cand_vecs.unsqueeze(-1)
         ).squeeze()
-        
+
         cnt,tot,acc = 0,0,0
         all_loss = []
         for i,mol_tree in enumerate(mol_batch):
@@ -129,7 +129,7 @@ class DiffVAE(nn.Module):
 
                 label = create_var(torch.LongTensor([label]))
                 all_loss.append( self.assm_loss(cur_score.view(1,-1), label) )
-        
+
         all_loss = sum(all_loss) / len(mol_batch)
         return all_loss, acc * 1.0 / cnt
 
@@ -161,14 +161,14 @@ class DiffVAE(nn.Module):
         global_amap[1] = {atom.GetIdx():atom.GetIdx() for atom in cur_mol.GetAtoms()}
 
         cur_mol = self.dfs_assemble(tree_mess, x_mol_vec_pooled, pred_nodes, cur_mol, global_amap, [], pred_root, None)
-        if cur_mol is None: 
+        if cur_mol is None:
             return None
 
         cur_mol = cur_mol.GetMol()
         set_atommap(cur_mol)
         cur_mol = Chem.MolFromSmiles(Chem.MolToSmiles(cur_mol))
         return Chem.MolToSmiles(cur_mol) if cur_mol is not None else None
-        
+
     def dfs_assemble(self, y_tree_mess, x_mol_vec_pooled, all_nodes, cur_mol, global_amap, fa_amap, cur_node, fa_node):
         fa_nid = fa_node.nid if fa_node is not None else -1
         prev_nodes = [fa_node] if fa_node is not None else []
@@ -184,7 +184,7 @@ class DiffVAE(nn.Module):
         if len(cands) == 0:
             return None
 
-        cand_smiles,cand_amap = zip(*cands)
+        cand_smiles,cand_amap = list(zip(*cands))
         cands = [(smiles, all_nodes, cur_node) for smiles in cand_smiles]
 
         jtmpn_holder = JTMPN.tensorize(cands, y_tree_mess[1])
@@ -196,7 +196,7 @@ class DiffVAE(nn.Module):
 
         backup_mol = Chem.RWMol(cur_mol)
         #for i in xrange(cand_idx.numel()):
-        for i in xrange( min(cand_idx.numel(), 5) ):
+        for i in range( min(cand_idx.numel(), 5) ):
             cur_mol = Chem.RWMol(backup_mol)
             pred_amap = cand_amap[cand_idx[i].item()]
             new_global_amap = copy.deepcopy(global_amap)
@@ -211,12 +211,12 @@ class DiffVAE(nn.Module):
             new_mol = Chem.MolFromSmiles(Chem.MolToSmiles(new_mol))
 
             if new_mol is None: continue
-            
+
             result = True
             for nei_node in children:
                 if nei_node.is_leaf: continue
                 cur_mol = self.dfs_assemble(y_tree_mess, x_mol_vec_pooled, all_nodes, cur_mol, new_global_amap, pred_amap, nei_node, cur_node)
-                if cur_mol is None: 
+                if cur_mol is None:
                     result = False
                     break
             if result: return cur_mol

@@ -4,7 +4,7 @@ The folder contains the training and testing scripts for variational junction tr
 
 Please make sure that this repo can be found by the system by running
 ```
-export PYTHONPATH=$path_to_repo/iclr19-graph2graph
+export PYTHONPATH=/Users/andrew.blevins/projects/notebooks/structure_improvment/iclr19-graph2graph:$PYTHONPATH
 ```
 
 ## Preprocessing
